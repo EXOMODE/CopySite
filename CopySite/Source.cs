@@ -39,17 +39,24 @@ namespace CopySite
         public async Task<bool> LoadAsync(Uri uri)
         {
             if (uri == null) return false;
+            if (!uri.Scheme.Contains("http")) uri = new Uri($"http://{uri.Host}{uri.PathAndQuery}");
             
             try
             {
                 using (HttpClient client = new HttpClient())
+                using (HttpResponseMessage response = await client.GetAsync(uri))
                 {
-                    Content = await client.GetByteArrayAsync(uri);
+                    Content = await response.Content.ReadAsByteArrayAsync();
                     Uri = uri;
                 }
             }
-            catch
+            catch (Exception e)
             {
+#if DEBUG
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(e);
+                Console.ResetColor();
+#endif
                 return false;
             }
             
@@ -64,21 +71,33 @@ namespace CopySite
 
         public async Task<bool> SaveAsync(string path, Func<byte[], byte[]> handler = null, bool isSaveContent = false)
         {
-            if (string.IsNullOrWhiteSpace(path)) return await SaveAsync();
-
-            string dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-
-            if (handler != null) Content = handler(Content);
-
-            lock (rootSync)
+            try
             {
-                File.WriteAllBytes(path, Content);
-                Console.WriteLine("Ресурс сохранён: \"{0}\" ({1} байт)", path, Content.Length);
+                if (string.IsNullOrWhiteSpace(path)) return await SaveAsync();
 
-                if (!isSaveContent) Content = null;
+                lock (rootSync)
+                {
+                    string dir = Path.GetDirectoryName(path);
+
+                    if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    if (handler != null) Content = handler(Content);
+
+                    File.WriteAllBytes(path, Content);
+                    Console.WriteLine("Ресурс сохранён: \"{0}\" ({1} байт)", path, Content.Length);
+
+                    if (!isSaveContent) Content = null;
+                }
             }
-            
+            catch (Exception e)
+            {
+#if DEBUG
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(e);
+                Console.ResetColor();
+#endif
+                return false;
+            }
+
             return true;
         }
 

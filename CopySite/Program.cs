@@ -90,14 +90,12 @@ namespace CopySite
 
         private static void Main(string[] args)
         {
-            args = "-output 'mishka-shop/' -url 'https://mishka-shop.com/' -timeout 5 -lang 'ru-RU'".Split(new[] { " " }, StringSplitOptions.RemoveEmptyEntries);
-
+#if DEBUG
+            args = "-output 'mishka-shop/' -url 'https://mishka-shop.com/' -timeout 5 -lang 'ru-RU' --full".Split(new[] { " " }, StringSplitOptions.RemoveEmptyEntries);
+#endif
             ParseArgs(args);
-
-
 #if DEBUG
             List<Exception> errors = new List<Exception>();
-
         loop:
 #endif
             try

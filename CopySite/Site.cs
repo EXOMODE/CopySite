@@ -23,7 +23,7 @@ namespace CopySite
 
         public bool IsOriginalStructure { get; set; }
 
-        private static readonly object rootSync = new object();
+        //private static readonly object rootSync = new object();
 
         public static ConcurrentDictionary<Uri, Tuple<string, bool>> Cache { get; protected set; }
 
@@ -63,8 +63,8 @@ namespace CopySite
             {
                 using (HttpClient client = new HttpClient())
                 {
-                    string xml = client.GetStringAsync(string.IsNullOrWhiteSpace(uri.LocalPath?.Trim('/')) ? $"{uri.Scheme}://{uri.Host}/sitemap.xml" : uri.OriginalString).Result;
-                    rssXmlDoc.LoadXml(xml);
+                    HttpResponseMessage response = client.GetAsync(string.IsNullOrWhiteSpace(uri.LocalPath?.Trim('/')) ? $"{uri.Scheme}://{uri.Host}/sitemap.xml" : uri.OriginalString).Result;
+                    rssXmlDoc.LoadXml(response.Content.ReadAsStringAsync().Result);
 
                     foreach (XmlNode topNode in rssXmlDoc.ChildNodes)
                     {
@@ -113,13 +113,12 @@ namespace CopySite
 #endif
             try
             {
-                IEnumerable<Uri> links;
 
                 if (isFull)
                 {
                     Console.WriteLine("Анализ карты сайта...");
 
-                    if (!TryParseSitemap(new Uri($"{uri.Scheme}://{uri.Host}"), out links))
+                    if (!TryParseSitemap(new Uri($"{uri.Scheme}://{uri.Host}"), out IEnumerable<Uri> links))
                     {
                         Page mainPage = new Page(uri, OutpupPath);
 
@@ -145,19 +144,21 @@ namespace CopySite
                             if (Cache.ContainsKey(a)) continue;
 
                             Page p = new Page(a, OutpupPath);
-                            
+
                             if (await p.LoadAsync(Timeout, true))
                             {
                                 string html = p.Document.DocumentNode.InnerHtml;
 
-                                await Task.Factory.StartNew(() => Parallel.ForEach(links, l =>
+                                //await Task.Factory.StartNew(() => Parallel.ForEach(links, l =>
+                                foreach (Uri l in links)
                                 {
-                                    string f = p.PathToFile ?? "#";
+                                    string f = p.PathToFile.Replace('/', '-').Replace('\\', '-').Trim('-') ?? "#";
 
-                                    if (!string.IsNullOrWhiteSpace(l.OriginalString)) html = html.Replace(l.OriginalString, f);
-                                    if (!string.IsNullOrWhiteSpace(l.LocalPath)) html = html.Replace(l.LocalPath, f);
-                                    if (!string.IsNullOrWhiteSpace(l.LocalPath?.TrimStart('/'))) html = html.Replace(l.LocalPath?.TrimStart('/'), f);
-                                }));
+                                    if (!string.IsNullOrWhiteSpace(l.OriginalString)) html = html.Replace($"href=\"{l.OriginalString}\"", $"href=\"{f}\"");
+                                    if (!string.IsNullOrWhiteSpace(l.LocalPath)) html = html.Replace($"href=\"{l.LocalPath}\"", $"href=\"{f}\"");
+                                    if (!string.IsNullOrWhiteSpace(l.LocalPath?.TrimStart('/'))) html = html.Replace($"href=\"{l.LocalPath?.TrimStart('/')}\"", $"href=\"{f}\"");
+                                    //}));
+                                }
 
                                 p.Document.DocumentNode.InnerHtml = html;
 #if DEBUG
@@ -203,8 +204,9 @@ namespace CopySite
                 else
                 {
                     Page p = new Page(uri, OutpupPath);
-                    await p.LoadAsync(Timeout, true);
-                    p.Save(IsOriginalStructure);
+
+                    if (await p.LoadAsync(Timeout, true)) p.Save(IsOriginalStructure);
+
                     p = null;
                 }
             }

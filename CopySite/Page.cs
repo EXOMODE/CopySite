@@ -95,7 +95,7 @@ namespace CopySite
             uri = null;
             isRemoteHost = false;
 
-            if (string.IsNullOrWhiteSpace(url)) return false;
+            if (string.IsNullOrWhiteSpace(url) || url.StartsWith("data:")) return false;
 
             if (url.StartsWith("//") || url.StartsWith("http://") || url.StartsWith("https://"))
             {
@@ -125,15 +125,17 @@ namespace CopySite
             MatchCollection matches = regex.Matches(style);
             List<string> ready = new List<string>();
 
-            await Task.Factory.StartNew(() => Parallel.ForEach(matches.Cast<Match>(), async match =>
+            //await Task.Factory.StartNew(() => Parallel.ForEach(matches.Cast<Match>(), async match =>
+            foreach (Match match in matches)
             {
                 string url = match.Groups["url"].Value?.Trim('\'', '"');
 
-                if (string.IsNullOrWhiteSpace(url) || ready.Contains(url)) return;
+                //if (string.IsNullOrWhiteSpace(url) || ready.Contains(url)) return;
+                if (string.IsNullOrWhiteSpace(url) || ready.Contains(url) || url.StartsWith("data:")) continue;
 
                 ready.Add(url);
 
-                if (!url.StartsWith("http://") && !url.StartsWith("https://") && !url.StartsWith("/") && !url.StartsWith("\\")) url = baseUri.LocalPath + '/' + url;
+                if (!url.StartsWith("http://") && !url.StartsWith("https://") && !url.StartsWith("/") && !url.StartsWith("\\")) url = baseUri?.LocalPath + '/' + url;
 
                 if (TryParseUri(url, out Uri src))
                 {
@@ -183,35 +185,31 @@ namespace CopySite
                         Cache.AddOrUpdate(src, new Tuple<string, bool>(p, isSaveFiles), (_, __) => __);
                     }
                 }
-            }));
+                //}));
+            }
             
             return Encoding.UTF8.GetBytes(style);
         }
 
         private async Task<HtmlDocument> AnalyseAsync(HtmlDocument document, bool isSaveFiles = false)
         {
-            await Task.Factory.StartNew(() => Parallel.Invoke(
-                async () =>
-                {
-                    IList<HtmlNode> links = document.DocumentNode.QuerySelectorAll("link, style, script");
+            //await Task.Factory.StartNew(() => Parallel.Invoke(
+            //    async () =>
+            //    {
+            //        foreach (HtmlNode i in document.DocumentNode.QuerySelectorAll("link, style, script")) await AnalyseAsync(i, isSaveFiles);
+            //    },
+            //    () => Parallel.ForEach(document.DocumentNode.QuerySelectorAll("img"), async i => await AnalyseAsync(i, isSaveFiles))
+            //));
 
-                    for (int i = 0; i < links.Count; i++) await AnalyseAsync(links[i], isSaveFiles);
-                },
-                () =>
-                {
-                    IList<HtmlNode> images = document.DocumentNode.QuerySelectorAll("img");
+            foreach (HtmlNode i in document.DocumentNode.QuerySelectorAll("link, style, script, img")) await AnalyseAsync(i, isSaveFiles);
 
-                    Parallel.For(0, images.Count, async i => await AnalyseAsync(images[i], isSaveFiles));
-                }
-            ));
-            
             HtmlNode e = Document.DocumentNode.QuerySelector("head");
             string f = Path.GetFileNameWithoutExtension(PathToFile);
             string p = $"client/styles/pages/{f}.css";
             
             if (LocalStyle != null && LocalStyle.Content != null)
             {
-                LocalStyle.Content = await ContentHandlerAsync(LocalStyle.Content, true);
+                LocalStyle.Content = await ContentHandlerAsync(LocalStyle.Content, isLocal: true, isSaveFiles: true);
 
                 if (LocalStyle.Save(Path.Combine(OutputPath, p))) e.InnerHtml += $"\r\n\t<link rel=\"stylesheet\" href=\"{p}\" />\r\n";
             }
@@ -298,7 +296,7 @@ namespace CopySite
                                     {
                                         if (!isAnotherHost)
                                         {
-                                            s.Content = await ContentHandlerAsync(s.Content, baseUri: href);
+                                            s.Content = await ContentHandlerAsync(s.Content, baseUri: href, isSaveFiles: isSaveFiles);
                                             string p = Path.Combine("client/styles/", Path.GetFileName(href.LocalPath));
 
                                             if (isSaveFiles && s.Save(Path.Combine(OutputPath, p))) node.SetAttributeValue("href", p);
@@ -382,8 +380,13 @@ namespace CopySite
                     Uri = uri;
                 }
             }
-            catch
+            catch (Exception e)
             {
+#if DEBUG
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(e);
+                Console.ResetColor();
+#endif
                 return false;
             }
 
@@ -408,19 +411,31 @@ namespace CopySite
         {
             if (string.IsNullOrWhiteSpace(path)) return false;
 
-            if (isOriginalStructure)
+            try
             {
-                string dir = Path.GetDirectoryName(path);
+                if (isOriginalStructure)
+                {
+                    string dir = Path.GetDirectoryName(path);
 
-                if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                }
+                else
+                    path = path.Replace('/', '-').Replace('\\', '-').Trim('-');
+
+                lock (rootSync)
+                {
+                    File.WriteAllText(Path.Combine(OutputPath, isOriginalStructure ? "pages/" : "", path), Document.DocumentNode.WriteContentTo());
+                    Console.WriteLine("Страница сохранена: \"{0}\"\r\n", path);
+                }
             }
-            else
-                path = path.Replace('/', '-').Replace('\\', '-').Trim('-');
-
-            lock (rootSync)
+            catch (Exception e)
             {
-                File.WriteAllText(Path.Combine(OutputPath, isOriginalStructure ? "pages/" : "", path), Document.DocumentNode.WriteContentTo());
-                Console.WriteLine("Страница сохранена: \"{0}\"\r\n", path);
+#if DEBUG
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(e);
+                Console.ResetColor();
+#endif
+                return false;
             }
 
             return true;
