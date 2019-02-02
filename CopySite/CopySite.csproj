@@ -2,10 +2,12 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>netcoreapp2.1;net452</TargetFrameworks>
-    <StartupObject>CopySite.Program</StartupObject>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <TargetFrameworks>net472</TargetFrameworks>
     <Platforms>AnyCPU;x64;x86</Platforms>
+    <ApplicationIcon />
+    <StartupObject>CopySite.Program</StartupObject>
+    <LangVersion>7.3</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -34,6 +36,9 @@
 
   <ItemGroup>
     <PackageReference Include="CefSharp.OffScreen" Version="71.0.0" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.8.14" />
+    <PackageReference Include="HtmlAgilityPack.CssSelectors" Version="1.0.2" />
+    <PackageReference Include="System.Net.Http" Version="4.3.4" />
   </ItemGroup>
 
 </Project>
